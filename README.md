@@ -90,18 +90,6 @@ npm run pack       # 打包 Windows 安装包（生成于 dist/）
 
 要点：提交信息走 Conventional Commits（`feat(stats): ...`），不符合格式会被 `commit-msg` 钩子直接拒绝；每次提交前 `pre-commit` 会跑一遍单测，失败即中止。
 
-### 打包提示
-
-国内网络打包时设置镜像，避免下载卡死：
-
-```bash
-set "ELECTRON_MIRROR=https://cdn.npmmirror.com/binaries/electron/"
-set "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/"
-```
-
-若 winCodeSign 解压报"无法创建符号链接"（无开发者权限），手动解压其 7z 到
-`%LOCALAPPDATA%/electron-builder/Cache/winCodeSign/winCodeSign-2.6.0/` 即可跳过。
-
 ## 路线图
 
 - [x] M1 骨架
