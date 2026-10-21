@@ -1,11 +1,17 @@
 {
   "name": "planner-studio",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "个人计划与每日日程管理桌面应用",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "commonjs",
   "main": "main.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/",
+    "test": "node --test",
     "pack": "electron-builder --win"
   },
   "build": {
