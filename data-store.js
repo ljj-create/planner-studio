@@ -31,6 +31,43 @@ function dateKeyOf(d) {
   return `${y}-${m}-${day}`
 }
 
+const WEEKDAY_SHORT = ['日', '一', '二', '三', '四', '五', '六']
+const DAY_MS = 86400000
+
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function addDays(d, n) {
+  const x = startOfDay(d)
+  x.setDate(x.getDate() + n)
+  return x
+}
+
+// 周一为一周起点
+function startOfWeek(d) {
+  const x = startOfDay(d)
+  return addDays(x, -((x.getDay() + 6) % 7))
+}
+
+function daysBetween(from, to) {
+  return Math.round((startOfDay(to) - startOfDay(from)) / DAY_MS)
+}
+
+function rangeLabel(start, end) {
+  const y = start.getFullYear() === end.getFullYear() ? '' : `${start.getFullYear()}年`
+  if (start.getMonth() === end.getMonth()) {
+    return `${y}${start.getMonth() + 1}月${start.getDate()}日 - ${end.getDate()}日`
+  }
+  return `${y}${start.getMonth() + 1}月${start.getDate()}日 - ${end.getMonth() + 1}月${end.getDate()}日`
+}
+
+function makeDelta(current, previous) {
+  const rate = current.rate === null || previous.rate === null ? null : current.rate - previous.rate
+  const done = previous.total === 0 ? null : current.done - previous.done
+  return { rate, done, prevRate: previous.rate, prevDone: previous.done, prevTotal: previous.total }
+}
+
 class DataStore {
   constructor(filePath) {
     this.filePath = filePath
@@ -189,6 +226,119 @@ class DataStore {
     }
     this.save()
     return n
+  }
+
+  // 汇总 [start, start+length) 区间。今天之后的日期不计入 total/done，
+  // 但仍会出现在 days 里（前端用来画完整周期的空位）。
+  summarize(start, length, today) {
+    const startDay = startOfDay(start)
+    const todayDay = startOfDay(today)
+    const days = []
+    const byPriority = {
+      high: { total: 0, done: 0 },
+      medium: { total: 0, done: 0 },
+      low: { total: 0, done: 0 },
+    }
+    const completedByDay = new Map()
+    let total = 0
+    let done = 0
+    for (let i = 0; i < length; i++) {
+      const d = addDays(startDay, i)
+      const key = dateKeyOf(d)
+      const list = this.getTodos(key)
+      const dayTotal = list.length
+      const dayDone = list.filter((t) => t.done).length
+      const isFuture = d.getTime() > todayDay.getTime()
+      days.push({
+        key,
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+        weekday: WEEKDAY_SHORT[d.getDay()],
+        total: dayTotal,
+        done: dayDone,
+        rate: dayTotal === 0 ? null : dayDone / dayTotal,
+        isFuture,
+        isToday: d.getTime() === todayDay.getTime(),
+      })
+      if (isFuture) continue
+      total += dayTotal
+      done += dayDone
+      for (const t of list) {
+        const p = PRIORITIES.includes(t.priority) ? t.priority : 'medium'
+        byPriority[p].total++
+        if (!t.done) continue
+        byPriority[p].done++
+        if (!completedByDay.has(key)) completedByDay.set(key, new Map())
+        const texts = completedByDay.get(key)
+        texts.set(t.text, (texts.get(t.text) || 0) + 1)
+      }
+    }
+    const endDay = addDays(startDay, length - 1)
+    const countedEnd = endDay.getTime() > todayDay.getTime() ? todayDay : endDay
+    // 已完成任务按日期倒序分组，同一天同名的合并计数（重复任务常见）
+    const completed = [...completedByDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([key, texts]) => ({
+        key,
+        month: Number(key.slice(5, 7)),
+        day: Number(key.slice(8, 10)),
+        items: [...texts.entries()].map(([text, count]) => ({ text, count })),
+      }))
+    return {
+      startKey: dateKeyOf(startDay),
+      endKey: dateKeyOf(endDay),
+      countedEndKey: dateKeyOf(countedEnd),
+      label: rangeLabel(startDay, endDay),
+      total,
+      done,
+      rate: total === 0 ? null : done / total,
+      byPriority,
+      completed,
+      days,
+    }
+  }
+
+  // 连续完成天数：今天尚未开始时不清零，从昨天往前回溯
+  computeStreak(today = new Date()) {
+    const hasDone = (d) => this.getTodos(dateKeyOf(d)).some((t) => t.done)
+    let cursor = startOfDay(today)
+    if (!hasDone(cursor)) cursor = addDays(cursor, -1)
+    let streak = 0
+    while (hasDone(cursor) && streak < 3650) {
+      streak++
+      cursor = addDays(cursor, -1)
+    }
+    return streak
+  }
+
+  // 周/月统计：自然周（周一至周日）、自然月；环比用上一周期的同期区间
+  getStats(today = new Date()) {
+    const todayDay = startOfDay(today)
+    const weekStart = startOfWeek(todayDay)
+    const weekElapsed = daysBetween(weekStart, todayDay) + 1
+    const week = this.summarize(weekStart, 7, todayDay)
+    const prevWeekStart = addDays(weekStart, -7)
+    const prevWeek = this.summarize(prevWeekStart, weekElapsed, addDays(prevWeekStart, weekElapsed - 1))
+
+    const monthStart = new Date(todayDay.getFullYear(), todayDay.getMonth(), 1)
+    const monthLength = new Date(todayDay.getFullYear(), todayDay.getMonth() + 1, 0).getDate()
+    const month = this.summarize(monthStart, monthLength, todayDay)
+    const prevMonthStart = new Date(todayDay.getFullYear(), todayDay.getMonth() - 1, 1)
+    const prevMonthLength = new Date(todayDay.getFullYear(), todayDay.getMonth(), 0).getDate()
+    const prevMonthElapsed = Math.min(todayDay.getDate(), prevMonthLength)
+    const prevMonth = this.summarize(
+      prevMonthStart,
+      prevMonthElapsed,
+      addDays(prevMonthStart, prevMonthElapsed - 1)
+    )
+
+    return {
+      todayKey: dateKeyOf(todayDay),
+      streak: this.computeStreak(todayDay),
+      week: { ...week, prev: prevWeek, delta: makeDelta(week, prevWeek) },
+      month: { ...month, prev: prevMonth, delta: makeDelta(month, prevMonth) },
+    }
   }
 
   shouldRepeat(repeat, date) {

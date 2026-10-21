@@ -160,6 +160,7 @@ function registerIpc() {
   handle('tasks:clearOverdue', () => store.clearOverdueTasks())
   handle('settings:get', () => store.getSettings())
   handle('settings:set', (partial) => store.setSettings(partial))
+  handle('stats:get', () => store.getStats())
   handle('app:autoLaunch', (enabled) => {
     app.setLoginItemSettings({
       openAtLogin: !!enabled,

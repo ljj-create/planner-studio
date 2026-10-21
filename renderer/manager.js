@@ -12,10 +12,20 @@ const todoRepeat = document.getElementById('todo-repeat')
 const todoList = document.getElementById('todo-list')
 const todayProgress = document.getElementById('today-progress')
 const clearOverdueBtn = document.getElementById('clear-overdue-btn')
+const statTabs = document.getElementById('stat-tabs')
+const statRangeLine = document.getElementById('stat-range-line')
 const statToday = document.getElementById('stat-today')
-const statWeek = document.getElementById('stat-week')
+const statRate = document.getElementById('stat-rate')
+const statRateLabel = document.getElementById('stat-rate-label')
+const statDelta = document.getElementById('stat-delta')
+const statDeltaLabel = document.getElementById('stat-delta-label')
 const statStreak = document.getElementById('stat-streak')
+const weekChartWrap = document.getElementById('week-chart-wrap')
 const weekChart = document.getElementById('week-chart')
+const monthHeatWrap = document.getElementById('month-heat-wrap')
+const monthHeat = document.getElementById('month-heat')
+const doneList = document.getElementById('done-list')
+const doneCount = document.getElementById('done-count')
 const settingTheme = document.getElementById('setting-theme')
 const settingNotify = document.getElementById('setting-notify')
 const settingAutoLaunch = document.getElementById('setting-autolaunch')
@@ -31,6 +41,9 @@ const calDayTodos = document.getElementById('cal-day-todos')
 let tasks = []
 let todos = []
 let allTodos = {}
+let stats = null
+let statRange = 'week'
+let currentDayKey = dateKey()
 const now = new Date()
 let calYear = now.getFullYear()
 let calMonth = now.getMonth()
@@ -144,52 +157,186 @@ function renderTodos() {
   }
 }
 
+function formatKey(key) {
+  const [, m, d] = key.split('-').map(Number)
+  return `${m}月${d}日`
+}
+
+function pct(rate) {
+  return rate === null || rate === undefined ? '—' : `${Math.round(rate * 100)}%`
+}
+
 function renderStats() {
-  const days = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const key = dateKey(d)
-    const list = allTodos[key] || []
-    const done = list.filter((t) => t.done).length
-    days.push({ key, total: list.length, done, weekday: d.toLocaleDateString('zh-CN', { weekday: 'short' }) })
-  }
-  statToday.textContent = days[6].total === 0 ? '-' : `${days[6].done} / ${days[6].total}`
+  if (!stats) return
+  const isWeek = statRange === 'week'
+  const range = isWeek ? stats.week : stats.month
 
-  let weekTotal = 0
-  let weekDone = 0
-  for (const d of days) {
-    weekTotal += d.total
-    weekDone += d.done
+  for (const btn of statTabs.querySelectorAll('.seg-btn')) {
+    btn.classList.toggle('is-active', btn.dataset.range === statRange)
   }
-  statWeek.textContent = weekTotal === 0 ? '-' : `${Math.round((weekDone / weekTotal) * 100)}%`
 
-  let streak = 0
-  const d = new Date()
-  while (true) {
-    const list = (allTodos[dateKey(d)] || []).filter((t) => t.done)
-    if (list.length === 0) break
-    streak++
-    d.setDate(d.getDate() - 1)
-  }
-  statStreak.textContent = streak
+  const today = stats.week.days.find((d) => d.isToday)
+  statToday.textContent = today && today.total > 0 ? `${today.done} / ${today.total}` : '—'
+  statToday.classList.toggle('is-muted', !today || today.total === 0)
 
+  statRate.textContent = pct(range.rate)
+  statRate.classList.toggle('is-muted', range.rate === null)
+  statRateLabel.textContent = isWeek ? '本周完成率' : '本月完成率'
+
+  const deltaRate = range.delta.rate
+  statDelta.textContent =
+    deltaRate === null ? '—' : `${deltaRate > 0 ? '+' : ''}${Math.round(deltaRate * 100)}%`
+  statDelta.classList.toggle('is-muted', deltaRate === null)
+  statDelta.classList.toggle('delta-up', deltaRate !== null && deltaRate > 0)
+  statDelta.classList.toggle('delta-down', deltaRate !== null && deltaRate < 0)
+  statDeltaLabel.textContent = isWeek ? '较上周同期' : '较上月同期'
+  statDelta.title =
+    deltaRate === null
+      ? '上一周期同期没有待办记录，无法比较'
+      : `上一周期同期完成率 ${pct(range.delta.prevRate)}（${range.delta.prevDone} / ${range.delta.prevTotal}）`
+
+  statStreak.textContent = stats.streak
+  statStreak.classList.toggle('is-muted', stats.streak === 0)
+
+  const prefix = isWeek ? '本周' : '本月'
+  statRangeLine.textContent =
+    range.total === 0
+      ? `${prefix} ${range.label} · 暂无待办记录`
+      : `${prefix} ${range.label} · 完成 ${range.done} / ${range.total} 项 · 统计至 ${formatKey(range.countedEndKey)}`
+
+  weekChartWrap.classList.toggle('hidden', !isWeek)
+  monthHeatWrap.classList.toggle('hidden', isWeek)
+  if (isWeek) renderWeekChart(stats.week)
+  else renderMonthHeat(stats.month)
+
+  renderCompleted(range)
+}
+
+function renderWeekChart(week) {
   weekChart.textContent = ''
-  for (const day of days) {
+  for (const day of week.days) {
     const col = document.createElement('div')
     col.className = 'chart-col'
-    const bar = document.createElement('div')
-    bar.className = 'chart-bar'
-    const pct = day.total === 0 ? 0 : Math.round((day.done / day.total) * 100)
-    bar.style.height = `${Math.max(pct, 2)}%`
-    bar.title = `${day.key} 完成 ${day.done}/${day.total}`
+
+    const track = document.createElement('div')
+    track.className = 'chart-track'
+    if (day.isFuture) {
+      track.classList.add('is-future')
+    } else {
+      if (day.isToday) track.classList.add('is-today')
+      if (day.rate !== null) {
+        const bar = document.createElement('div')
+        bar.className = 'chart-bar'
+        if (day.rate === 0) bar.classList.add('is-zero')
+        bar.style.height = `${Math.round(day.rate * 100)}%`
+        track.appendChild(bar)
+      }
+    }
+
+    const val = document.createElement('span')
+    val.className = 'chart-val'
+    val.textContent = day.isFuture ? '' : day.total === 0 ? '—' : `${day.done}/${day.total}`
+
     const label = document.createElement('span')
     label.className = 'chart-label'
+    if (day.isToday) label.classList.add('is-today')
     label.textContent = day.weekday
-    col.append(bar, label)
+
+    col.title = day.isFuture
+      ? `${formatKey(day.key)} 尚未到来`
+      : `${formatKey(day.key)} 完成 ${day.done} / ${day.total}`
+    col.append(track, val, label)
     weekChart.appendChild(col)
   }
 }
+
+function renderMonthHeat(month) {
+  monthHeat.textContent = ''
+  const lead = (new Date(month.days[0].year, month.days[0].month - 1, 1).getDay() + 6) % 7
+  for (let i = 0; i < lead; i++) {
+    const blank = document.createElement('span')
+    blank.className = 'heat-blank'
+    monthHeat.appendChild(blank)
+  }
+  for (const day of month.days) {
+    const cell = document.createElement('div')
+    if (day.isFuture) {
+      cell.className = 'heat-cell is-future'
+    } else if (day.total === 0) {
+      cell.className = 'heat-cell is-empty'
+    } else if (day.rate === 0) {
+      cell.className = 'heat-cell lvl-0'
+    } else if (day.rate <= 0.34) {
+      cell.className = 'heat-cell lvl-1'
+    } else if (day.rate <= 0.67) {
+      cell.className = 'heat-cell lvl-2'
+    } else if (day.rate < 1) {
+      cell.className = 'heat-cell lvl-3'
+    } else {
+      cell.className = 'heat-cell lvl-4'
+    }
+    if (day.isToday) cell.classList.add('is-today')
+    cell.textContent = day.day
+    cell.title = day.isFuture
+      ? `${formatKey(day.key)} 尚未到来`
+      : `${formatKey(day.key)} 完成 ${day.done} / ${day.total}`
+    if (!day.isFuture) cell.addEventListener('click', () => jumpToDate(day.key))
+    monthHeat.appendChild(cell)
+  }
+}
+
+function renderCompleted(range) {
+  doneList.textContent = ''
+  const groups = range.completed || []
+  const totalDone = groups.reduce((sum, g) => sum + g.items.reduce((s, i) => s + i.count, 0), 0)
+  doneCount.textContent = totalDone === 0 ? '' : `共 ${totalDone} 项`
+  if (groups.length === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'placeholder'
+    empty.textContent = '这一周期还没有完成的任务'
+    doneList.appendChild(empty)
+    return
+  }
+  for (const group of groups) {
+    const row = document.createElement('div')
+    row.className = 'done-row'
+    const date = document.createElement('span')
+    date.className = 'done-date'
+    date.textContent = `${group.month}月${group.day}日`
+    const items = document.createElement('div')
+    items.className = 'done-items'
+    for (const item of group.items) {
+      const chip = document.createElement('span')
+      chip.className = 'done-item'
+      chip.textContent = item.count > 1 ? `${item.text} ×${item.count}` : item.text
+      chip.title = `${formatKey(group.key)} ${item.text}${item.count > 1 ? ` ×${item.count}` : ''}`
+      items.appendChild(chip)
+    }
+    row.append(date, items)
+    doneList.appendChild(row)
+  }
+}
+
+function jumpToDate(key) {
+  const [y, m] = key.split('-').map(Number)
+  calYear = y
+  calMonth = m - 1
+  selectedKey = key
+  renderCalendar()
+  document.querySelector('.calendar-panel').scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+async function refreshStats() {
+  stats = await api.stats.get()
+  renderStats()
+}
+
+statTabs.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn')
+  if (!btn || btn.dataset.range === statRange) return
+  statRange = btn.dataset.range
+  renderStats()
+})
 
 async function applyTheme() {
   const settings = await api.settings.get()
@@ -416,35 +563,45 @@ settingTheme.addEventListener('change', () => api.settings.set({ theme: settingT
 settingNotify.addEventListener('change', () => api.settings.set({ notify: settingNotify.checked }))
 settingAutoLaunch.addEventListener('change', () => api.autoLaunch(settingAutoLaunch.checked))
 
-api.onDataChanged(async () => {
-  tasks = await api.tasks.list()
-  todos = await api.todos.get(dateKey())
-  allTodos = await api.todos.all()
-  renderTasks()
-  renderTodos()
-  renderStats()
-  renderCalendar()
-  syncSettings()
-})
-
-async function init() {
+function renderHeader() {
   todayEl.textContent = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'long',
   })
+}
+
+// 重新读取数据；currentDayKey 用于识别跨天
+async function loadData() {
+  currentDayKey = dateKey()
   tasks = await api.tasks.list()
-  todos = await api.todos.get(dateKey())
+  todos = await api.todos.get(currentDayKey)
   allTodos = await api.todos.all()
+}
+
+async function refreshAll() {
+  await loadData()
+  renderHeader()
   renderTasks()
   renderTodos()
-  renderStats()
+  await refreshStats()
   renderCalendar()
   syncSettings()
-  setInterval(() => {
+}
+
+api.onDataChanged(() => refreshAll())
+
+async function init() {
+  await refreshAll()
+  setInterval(async () => {
+    // 跨过零点：今日待办、统计口径、日历高亮都要跟着换天
+    if (dateKey() !== currentDayKey) {
+      await refreshAll()
+      return
+    }
     renderTasks()
-    renderStats()
+    await refreshStats()
   }, 60000)
 }
 

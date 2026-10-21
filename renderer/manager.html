@@ -49,23 +49,56 @@
       <ul id="todo-list" class="todo-list"></ul>
     </section>
 
-    <section class="panel">
-      <h2>统计</h2>
+    <section class="panel stat-panel">
+      <div class="panel-head">
+        <h2>统计</h2>
+        <div id="stat-tabs" class="seg">
+          <button type="button" class="seg-btn is-active" data-range="week">本周</button>
+          <button type="button" class="seg-btn" data-range="month">本月</button>
+        </div>
+      </div>
+
+      <div id="stat-range-line" class="stat-range-line"></div>
+
       <div class="stat-row">
         <div class="stat-card">
-          <div id="stat-today" class="stat-num">-</div>
+          <div id="stat-today" class="stat-num">—</div>
           <div class="stat-label">今日完成</div>
         </div>
         <div class="stat-card">
-          <div id="stat-week" class="stat-num">-</div>
-          <div class="stat-label">本周完成率</div>
+          <div id="stat-rate" class="stat-num">—</div>
+          <div id="stat-rate-label" class="stat-label">本周完成率</div>
         </div>
         <div class="stat-card">
-          <div id="stat-streak" class="stat-num">-</div>
+          <div id="stat-delta" class="stat-num">—</div>
+          <div id="stat-delta-label" class="stat-label">较上周同期</div>
+        </div>
+        <div class="stat-card">
+          <div id="stat-streak" class="stat-num">—</div>
           <div class="stat-label">连续完成天数</div>
         </div>
       </div>
-      <div id="week-chart" class="week-chart"></div>
+
+      <div id="week-chart-wrap">
+        <div id="week-chart" class="week-chart"></div>
+      </div>
+
+      <div id="month-heat-wrap" class="hidden">
+        <div class="heat-weekdays">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div id="month-heat" class="month-heat"></div>
+        <div class="heat-legend">
+          <span class="swatch s0"></span><span>未完成</span>
+          <span class="gap"></span>
+          <span class="swatch s1"></span><span class="swatch s2"></span><span class="swatch s3"></span><span class="swatch s4"></span><span>完成率递增</span>
+        </div>
+      </div>
+
+      <div class="done-block">
+        <div class="block-title">已完成任务<span id="done-count" class="block-count"></span></div>
+        <div id="done-list" class="done-list"></div>
+      </div>
     </section>
 
     <section class="panel">

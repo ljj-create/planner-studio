@@ -303,3 +303,178 @@ test('损坏的 data.json 自动恢复默认结构', () => {
   assert.deepEqual(store.getTodos('2026-08-12'), [])
   fs.rmSync(dir, { recursive: true, force: true })
 })
+// ---- 统计（getStats） ----
+// 固定基准日：2026-10-21 是周三，所在自然周为 2026-10-19（周一）至 2026-10-25（周日）
+
+function addTodo(store, dateKey, text, done, priority) {
+  const todo = store.addTodo(dateKey, text, { priority }).at(-1)
+  if (done) store.toggleTodo(dateKey, todo.id)
+  return todo
+}
+
+test('getStats 周统计从周一开始，未来日期不计入汇总', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-10-19', 'a', false)
+  addTodo(store, '2026-10-19', 'b', false)
+  addTodo(store, '2026-10-20', 'c', true)
+  addTodo(store, '2026-10-24', '周六', false)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.week.startKey, '2026-10-19')
+  assert.equal(stats.week.endKey, '2026-10-25')
+  assert.equal(stats.week.days.length, 7)
+  assert.equal(stats.week.days[0].weekday, '一')
+  assert.equal(stats.week.days[6].weekday, '日')
+  assert.equal(stats.week.total, 3)
+  assert.equal(stats.week.done, 1)
+  assert.equal(stats.week.rate, 1 / 3)
+  assert.equal(stats.week.countedEndKey, '2026-10-21')
+
+  const saturday = stats.week.days.find((d) => d.key === '2026-10-24')
+  assert.equal(saturday.isFuture, true)
+  assert.equal(saturday.total, 1)
+  assert.equal(saturday.isToday, false)
+  assert.equal(stats.week.days.find((d) => d.key === '2026-10-21').isToday, true)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 周环比只比较上周同期区间', () => {
+  const { store, dir } = tmpStore()
+  // 上周同期区间 = 2026-10-12 至 2026-10-14（本周已过 3 天）
+  addTodo(store, '2026-10-12', '上周一 a', true)
+  addTodo(store, '2026-10-12', '上周一 b', true)
+  addTodo(store, '2026-10-15', '上周四，应被窗口排除', false)
+  // 本周：1/2 完成
+  addTodo(store, '2026-10-19', '本周一 a', true)
+  addTodo(store, '2026-10-19', '本周一 b', false)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.week.rate, 0.5)
+  assert.equal(stats.week.prev.total, 2)
+  assert.equal(stats.week.prev.rate, 1)
+  assert.equal(stats.week.delta.rate, -0.5)
+  assert.equal(stats.week.delta.prevTotal, 2)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 月统计按自然月聚合，排除上月与本月未来', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-09-30', '上月', false)
+  addTodo(store, '2026-10-01', '月初', true)
+  addTodo(store, '2026-10-31', '本月未来', false)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.month.startKey, '2026-10-01')
+  assert.equal(stats.month.endKey, '2026-10-31')
+  assert.equal(stats.month.days.length, 31)
+  assert.equal(stats.month.total, 1)
+  assert.equal(stats.month.done, 1)
+  assert.equal(stats.month.rate, 1)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 月天数随当月实际天数（含闰年二月）', () => {
+  const { store, dir } = tmpStore()
+  assert.equal(store.getStats(new Date('2028-02-15T09:00:00')).month.days.length, 29)
+  assert.equal(store.getStats(new Date('2027-02-15T09:00:00')).month.days.length, 28)
+  assert.equal(store.getStats(new Date('2026-04-10T09:00:00')).month.days.length, 30)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 按月同期计算上月环比，月末天数不等时截断', () => {
+  const { store, dir } = tmpStore()
+  // 上月同期 = 2026-09-01 至 2026-09-21
+  addTodo(store, '2026-09-10', '上月同期', true)
+  addTodo(store, '2026-09-25', '上月同期之后，应被排除', true)
+  // 本月 2026-10-01 至 2026-10-21
+  addTodo(store, '2026-10-05', '本月 a', true)
+  addTodo(store, '2026-10-06', '本月 b', false)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.month.rate, 0.5)
+  assert.equal(stats.month.prev.total, 1)
+  assert.equal(stats.month.prev.rate, 1)
+  assert.equal(stats.month.delta.rate, -0.5)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 按优先级分档统计', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-10-19', '高 a', true, 'high')
+  addTodo(store, '2026-10-19', '高 b', false, 'high')
+  addTodo(store, '2026-10-20', '中 a', true, 'medium')
+  addTodo(store, '2026-10-21', '低 a', false, 'low')
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.deepEqual(stats.week.byPriority.high, { total: 2, done: 1 })
+  assert.deepEqual(stats.week.byPriority.medium, { total: 1, done: 1 })
+  assert.deepEqual(stats.week.byPriority.low, { total: 1, done: 0 })
+  assert.deepEqual(stats.month.byPriority.high, { total: 2, done: 1 })
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('连续完成天数：今天还没完成时不清零', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-10-18', '周日', true)
+  addTodo(store, '2026-10-19', '周一', true)
+  addTodo(store, '2026-10-20', '周二', true)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.streak, 3)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('连续完成天数：中途断档从最近一段重新计数', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-10-17', '周六', true)
+  addTodo(store, '2026-10-18', '周日', true)
+  addTodo(store, '2026-10-19', '周一未完成', false)
+  addTodo(store, '2026-10-20', '周二', true)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.streak, 1)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('getStats 返回已完成任务清单，同日同名合并计数', () => {
+  const { store, dir } = tmpStore()
+  addTodo(store, '2026-10-19', '读论文', true)
+  addTodo(store, '2026-10-19', '写周报', true)
+  addTodo(store, '2026-10-19', '读论文', true)
+  addTodo(store, '2026-10-20', '健身', true)
+  addTodo(store, '2026-10-21', '没做完的事', false)
+  addTodo(store, '2026-10-24', '未来日期的事', true)
+
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.week.completed.length, 2)
+  assert.equal(stats.week.completed[0].key, '2026-10-20')
+  assert.deepEqual(stats.week.completed[0].items, [{ text: '健身', count: 1 }])
+
+  const monday = stats.week.completed.find((g) => g.key === '2026-10-19')
+  assert.equal(monday.month, 10)
+  assert.equal(monday.day, 19)
+  assert.deepEqual(
+    monday.items.map((i) => [i.text, i.count]),
+    [
+      ['读论文', 2],
+      ['写周报', 1],
+    ]
+  )
+
+  const texts = stats.week.completed.flatMap((g) => g.items.map((i) => i.text))
+  assert.equal(texts.includes('没做完的事'), false)
+  assert.equal(texts.includes('未来日期的事'), false)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('无待办记录时完成率与环比为 null', () => {
+  const { store, dir } = tmpStore()
+  const stats = store.getStats(new Date('2026-10-21T09:00:00'))
+  assert.equal(stats.week.rate, null)
+  assert.equal(stats.week.delta.rate, null)
+  assert.equal(stats.week.delta.done, null)
+  assert.equal(stats.month.rate, null)
+  assert.equal(stats.month.prev.total, 0)
+  assert.equal(stats.streak, 0)
+  fs.rmSync(dir, { recursive: true, force: true })
+})

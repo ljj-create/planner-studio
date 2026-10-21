@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('planner', {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (partial) => ipcRenderer.invoke('settings:set', partial),
   },
+  stats: {
+    get: () => ipcRenderer.invoke('stats:get'),
+  },
   autoLaunch: (enabled) => ipcRenderer.invoke('app:autoLaunch', enabled),
   backup: {
     export: () => ipcRenderer.invoke('backup:export'),
