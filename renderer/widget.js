@@ -9,6 +9,7 @@ const progressText = document.getElementById('progress-text')
 let tasks = []
 let todos = []
 let mottoText = ''
+let currentDayKey = dateKey()
 
 function dateKey(d = new Date()) {
   const y = d.getFullYear()
@@ -134,12 +135,18 @@ function startMottoEdit() {
 mottoEl.addEventListener('dblclick', startMottoEdit)
 
 api.onDataChanged(async () => {
-  tasks = await api.tasks.list()
-  todos = await api.todos.get(dateKey())
+  await loadData()
   renderTasks()
   renderTodos()
   applySettings()
 })
+
+// 重新读取今天的数据；currentDayKey 用于识别跨天
+async function loadData() {
+  currentDayKey = dateKey()
+  tasks = await api.tasks.list()
+  todos = await api.todos.get(currentDayKey)
+}
 
 async function applySettings() {
   const settings = await api.settings.get()
@@ -149,12 +156,21 @@ async function applySettings() {
 }
 
 async function init() {
-  tasks = await api.tasks.list()
-  todos = await api.todos.get(dateKey())
+  await loadData()
   await applySettings()
   renderTasks()
   renderTodos()
-  setInterval(renderTasks, 60000)
+  setInterval(() => {
+    // 倒计时每分钟刷新；跨过零点后要重新取当天待办，否则挂件一直显示昨天
+    if (dateKey() !== currentDayKey) {
+      loadData().then(() => {
+        renderTasks()
+        renderTodos()
+      })
+      return
+    }
+    renderTasks()
+  }, 60000)
 }
 
 init()

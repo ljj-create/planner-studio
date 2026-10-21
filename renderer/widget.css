@@ -117,7 +117,7 @@ body[data-theme="dark"] .motto {
   margin-bottom: 8px;
 }
 
-.progress-bar {
+.progress-track {
   height: 6px;
   flex: 1;
   background: rgba(0, 0, 0, 0.1);
@@ -125,11 +125,10 @@ body[data-theme="dark"] .motto {
   overflow: hidden;
 }
 
-.progress-bar::after {
-  content: "";
-  display: block;
+.progress-fill {
   height: 100%;
   width: 0;
+  border-radius: 3px;
   background: var(--accent);
   transition: width 0.2s;
 }

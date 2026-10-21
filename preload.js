@@ -29,7 +29,6 @@ contextBridge.exposeInMainWorld('planner', {
     export: () => ipcRenderer.invoke('backup:export'),
     import: () => ipcRenderer.invoke('backup:import'),
   },
-  close: () => ipcRenderer.send('window:close'),
   openManager: () => ipcRenderer.send('manager:open'),
   onDataChanged: (cb) => ipcRenderer.on('data-changed', () => cb()),
 })

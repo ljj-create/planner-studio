@@ -295,6 +295,90 @@ test('deleteRepeatTemplate 删除所有实例后不再生成', () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+// ---- 持久化健壮性与备份导入 ----
+
+test('首次启动写入带版本号的数据文件', () => {
+  const { store, dir } = tmpStore()
+  store.addTodo('2026-08-12', 'a')
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf-8'))
+  assert.equal(onDisk.version, 1)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('旧文件缺少 version 字段时自动补版本并回写', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
+  const file = path.join(dir, 'data.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ futureTasks: [], todos: {}, settings: { theme: 'dark' } })
+  )
+  const store = new DataStore(file)
+  assert.equal(store.data.version, 1)
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  assert.equal(onDisk.version, 1)
+  assert.equal(onDisk.settings.theme, 'dark')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('损坏的数据文件被改名留档，而不是被静默覆盖', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
+  const file = path.join(dir, 'data.json')
+  fs.writeFileSync(file, 'not-json{{{')
+  const store = new DataStore(file)
+  assert.deepEqual(store.getTodos('2026-08-12'), [])
+  assert.equal(fs.existsSync(file), false)
+  assert.equal(
+    fs.readdirSync(dir).some((f) => f.startsWith('data.json.corrupt-')),
+    true
+  )
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('保存后不残留临时文件', () => {
+  const { store, dir } = tmpStore()
+  store.addTodo('2026-08-12', 'a')
+  assert.deepEqual(fs.readdirSync(dir), ['data.json'])
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('importData 保留重复任务模板与跳过记录', () => {
+  const { store, dir } = tmpStore()
+  const result = store.importData({
+    futureTasks: [],
+    todos: { '2026-10-01': [] },
+    repeatSkips: { tpl1: ['2026-10-02'] },
+    repeatTemplates: { tpl1: { text: '喝水', priority: 'high', repeat: 'daily' } },
+  })
+  assert.deepEqual(result, { ok: true })
+  assert.equal(store.data.repeatTemplates.tpl1.text, '喝水')
+  assert.deepEqual(store.data.repeatSkips.tpl1, ['2026-10-02'])
+
+  const reloaded = new DataStore(path.join(dir, 'data.json'))
+  assert.equal(reloaded.data.repeatTemplates.tpl1.text, '喝水')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('importData 保留当前设置，不被旧备份覆盖', () => {
+  const { store, dir } = tmpStore()
+  store.setSettings({ theme: 'dark', motto: '当前的激励语' })
+  store.importData({
+    futureTasks: [],
+    todos: {},
+    settings: { theme: 'light', motto: '旧备份里的激励语' },
+  })
+  assert.equal(store.getSettings().theme, 'dark')
+  assert.equal(store.getSettings().motto, '当前的激励语')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('importData 拒绝格式不正确的备份', () => {
+  const { store, dir } = tmpStore()
+  assert.deepEqual(store.importData(null), { ok: false, reason: '备份格式不正确' })
+  assert.deepEqual(store.importData({ todos: {} }), { ok: false, reason: '备份格式不正确' })
+  assert.deepEqual(store.importData({ futureTasks: [] }), { ok: false, reason: '备份格式不正确' })
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
 test('损坏的 data.json 自动恢复默认结构', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
   fs.writeFileSync(path.join(dir, 'data.json'), 'not-json{{{')
@@ -303,6 +387,7 @@ test('损坏的 data.json 自动恢复默认结构', () => {
   assert.deepEqual(store.getTodos('2026-08-12'), [])
   fs.rmSync(dir, { recursive: true, force: true })
 })
+
 // ---- 统计（getStats） ----
 // 固定基准日：2026-10-21 是周三，所在自然周为 2026-10-19（周一）至 2026-10-25（周日）
 

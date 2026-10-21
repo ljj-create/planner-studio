@@ -13,15 +13,48 @@ const DEFAULT_SETTINGS = {
 }
 const PRIORITIES = ['high', 'medium', 'low']
 const REPEATS = ['none', 'daily', 'workdays', 'weekly']
+// 数据结构版本，结构变更时 +1 并在 migrate() 里补升级逻辑
+const SCHEMA_VERSION = 1
+
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
 
 function defaultData() {
   return {
+    version: SCHEMA_VERSION,
     futureTasks: [],
     todos: {},
     repeatSkips: {},
     repeatTemplates: {},
     settings: { ...DEFAULT_SETTINGS },
   }
+}
+
+// 把任意来源的 JSON（磁盘文件 / 导入的备份）归一化成完整结构；格式不对返回 null
+function normalizeData(parsed) {
+  if (!isPlainObject(parsed)) return null
+  if (!Array.isArray(parsed.futureTasks)) return null
+  if (!isPlainObject(parsed.todos)) return null
+  const settings = isPlainObject(parsed.settings) ? parsed.settings : {}
+  return {
+    version: typeof parsed.version === 'number' ? parsed.version : 0,
+    futureTasks: parsed.futureTasks,
+    todos: parsed.todos,
+    repeatSkips: isPlainObject(parsed.repeatSkips) ? parsed.repeatSkips : {},
+    repeatTemplates: isPlainObject(parsed.repeatTemplates) ? parsed.repeatTemplates : {},
+    settings: { ...DEFAULT_SETTINGS, ...settings },
+  }
+}
+
+// 迁移：按 version 逐级升级，返回是否发生过变化
+function migrate(data) {
+  const before = data.version
+  if (data.version < 1) {
+    // v0（早期文件没有 version 字段）→ v1：仅补版本号，结构未变
+    data.version = 1
+  }
+  return { changed: data.version !== before }
 }
 
 function dateKeyOf(d) {
@@ -71,30 +104,58 @@ function makeDelta(current, previous) {
 class DataStore {
   constructor(filePath) {
     this.filePath = filePath
-    this.data = this.load()
+    const { data, needsSave } = this.load()
+    this.data = data
+    if (needsSave) this.save()
   }
 
   load() {
+    let raw
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf-8')
-      const parsed = JSON.parse(raw)
-      const settings = parsed.settings || {}
-      return {
-        futureTasks: Array.isArray(parsed.futureTasks) ? parsed.futureTasks : [],
-        todos: parsed.todos && typeof parsed.todos === 'object' ? parsed.todos : {},
-        repeatSkips: parsed.repeatSkips && typeof parsed.repeatSkips === 'object' ? parsed.repeatSkips : {},
-        repeatTemplates:
-          parsed.repeatTemplates && typeof parsed.repeatTemplates === 'object' ? parsed.repeatTemplates : {},
-        settings: { ...DEFAULT_SETTINGS, ...settings },
-      }
+      raw = fs.readFileSync(this.filePath, 'utf-8')
+    } catch (err) {
+      // 文件不存在属于正常（首次启动），其它读取错误要把坏文件留证
+      if (err.code !== 'ENOENT') this.quarantine(this.filePath)
+      return { data: defaultData(), needsSave: false }
+    }
+    try {
+      const normalized = normalizeData(JSON.parse(raw))
+      if (!normalized) throw new Error('数据结构不符合预期')
+      const { changed } = migrate(normalized)
+      return { data: normalized, needsSave: changed }
     } catch {
-      return defaultData()
+      this.quarantine(this.filePath)
+      return { data: defaultData(), needsSave: false }
     }
   }
 
+  // 把无法解析的文件改名留档，避免下次保存时把用户原始数据直接覆盖掉
+  quarantine(filePath) {
+    try {
+      if (!fs.existsSync(filePath)) return
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      fs.renameSync(filePath, `${filePath}.corrupt-${stamp}`)
+    } catch (e) {
+      console.error('损坏数据文件留档失败:', e.message)
+    }
+  }
+
+  // 先写临时文件再原子替换，避免写到一半崩溃留下半截 JSON
   save() {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-    fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2))
+    const tmp = `${this.filePath}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2))
+    fs.renameSync(tmp, this.filePath)
+  }
+
+  // 用备份内容替换数据，设置项沿用当前（避免导入旧备份改掉主题/提醒开关）
+  importData(parsed) {
+    const normalized = normalizeData(parsed)
+    if (!normalized) return { ok: false, reason: '备份格式不正确' }
+    migrate(normalized)
+    this.data = { ...normalized, settings: this.data.settings }
+    this.save()
+    return { ok: true }
   }
 
   getTodos(dateKey) {

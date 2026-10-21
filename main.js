@@ -9,21 +9,8 @@ let managerWin = null
 let widgetWin = null
 let tray = null
 const notifiedTaskIds = new Set()
-
-const MUTATIONS = [
-  'todos:add',
-  'todos:toggle',
-  'todos:remove',
-  'todos:rename',
-  'todos:updateRepeat',
-  'todos:deleteRepeat',
-  'tasks:add',
-  'tasks:remove',
-  'tasks:clearOverdue',
-  'settings:set',
-  'app:autoLaunch',
-  'backup:import',
-]
+// 只提醒最近 24 小时内到期的任务，避免每次启动把陈年过期任务全弹一遍
+const DUE_NOTIFY_WINDOW_MS = 24 * 60 * 60 * 1000
 
 function broadcast() {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -126,11 +113,12 @@ function checkDueTasks() {
   const now = Date.now()
   const settings = store.getSettings()
   for (const task of store.getTasks()) {
-    if (new Date(task.dueAt).getTime() <= now && !notifiedTaskIds.has(task.id)) {
-      notifiedTaskIds.add(task.id)
-      if (settings.notify && Notification.isSupported()) {
-        new Notification({ title: '任务到期', body: task.title }).show()
-      }
+    const due = new Date(task.dueAt).getTime()
+    if (!Number.isFinite(due) || due > now || notifiedTaskIds.has(task.id)) continue
+    notifiedTaskIds.add(task.id)
+    if (!settings.notify || now - due > DUE_NOTIFY_WINDOW_MS) continue
+    if (Notification.isSupported()) {
+      new Notification({ title: '任务到期', body: task.title }).show()
     }
   }
 }
@@ -140,34 +128,44 @@ function checkRepeats() {
 }
 
 function registerIpc() {
-  const handle = (channel, fn) =>
-    ipcMain.handle(channel, (_e, ...args) => {
-      const result = fn(...args)
-      if (MUTATIONS.includes(channel)) broadcast()
+  // 第三参数 { mutate: true } 标记写操作：等落盘完成后再广播，两个窗口一起刷新
+  const handle = (channel, fn, opts = {}) =>
+    ipcMain.handle(channel, async (_e, ...args) => {
+      const result = await fn(...args)
+      if (opts.mutate) broadcast()
       return result
     })
+
   handle('todos:get', (dateKey) => store.getTodos(dateKey))
   handle('todos:all', () => store.getAllTodos())
-  handle('todos:add', (dateKey, text, extra) => store.addTodo(dateKey, text, extra))
-  handle('todos:toggle', (dateKey, id) => store.toggleTodo(dateKey, id))
-  handle('todos:remove', (dateKey, id) => store.removeTodo(dateKey, id))
-  handle('todos:rename', (dateKey, id, text) => store.renameTodo(dateKey, id, text))
-  handle('todos:updateRepeat', (templateId, repeat) => store.updateRepeat(templateId, repeat))
-  handle('todos:deleteRepeat', (templateId) => store.deleteRepeatTemplate(templateId))
-  handle('tasks:list', () => store.getTasks())
-  handle('tasks:add', (title, dueAt) => store.addTask(title, dueAt))
-  handle('tasks:remove', (id) => store.removeTask(id))
-  handle('tasks:clearOverdue', () => store.clearOverdueTasks())
-  handle('settings:get', () => store.getSettings())
-  handle('settings:set', (partial) => store.setSettings(partial))
-  handle('stats:get', () => store.getStats())
-  handle('app:autoLaunch', (enabled) => {
-    app.setLoginItemSettings({
-      openAtLogin: !!enabled,
-      args: ['--autostart'],
-    })
-    return store.setSettings({ autoLaunch: !!enabled })
+  handle('todos:add', (dateKey, text, extra) => store.addTodo(dateKey, text, extra), { mutate: true })
+  handle('todos:toggle', (dateKey, id) => store.toggleTodo(dateKey, id), { mutate: true })
+  handle('todos:remove', (dateKey, id) => store.removeTodo(dateKey, id), { mutate: true })
+  handle('todos:rename', (dateKey, id, text) => store.renameTodo(dateKey, id, text), { mutate: true })
+  handle('todos:updateRepeat', (templateId, repeat) => store.updateRepeat(templateId, repeat), {
+    mutate: true,
   })
+  handle('todos:deleteRepeat', (templateId) => store.deleteRepeatTemplate(templateId), {
+    mutate: true,
+  })
+  handle('tasks:list', () => store.getTasks())
+  handle('tasks:add', (title, dueAt) => store.addTask(title, dueAt), { mutate: true })
+  handle('tasks:remove', (id) => store.removeTask(id), { mutate: true })
+  handle('tasks:clearOverdue', () => store.clearOverdueTasks(), { mutate: true })
+  handle('settings:get', () => store.getSettings())
+  handle('settings:set', (partial) => store.setSettings(partial), { mutate: true })
+  handle('stats:get', () => store.getStats())
+  handle(
+    'app:autoLaunch',
+    (enabled) => {
+      app.setLoginItemSettings({
+        openAtLogin: !!enabled,
+        args: ['--autostart'],
+      })
+      return store.setSettings({ autoLaunch: !!enabled })
+    },
+    { mutate: true }
+  )
   handle('backup:export', async () => {
     const dateStr = new Date().toISOString().slice(0, 10)
     const { canceled, filePath } = await dialog.showSaveDialog(managerWin, {
@@ -179,47 +177,54 @@ function registerIpc() {
     fs.writeFileSync(filePath, JSON.stringify(store.data, null, 2))
     return { ok: true, path: filePath }
   })
-  handle('backup:import', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(managerWin, {
-      title: '导入备份',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    })
-    if (canceled || !filePaths[0]) return { ok: false, reason: '已取消' }
-    try {
-      const parsed = JSON.parse(fs.readFileSync(filePaths[0], 'utf-8'))
-      if (!Array.isArray(parsed.futureTasks) || typeof parsed.todos !== 'object') {
-        return { ok: false, reason: '备份格式不正确' }
+  handle(
+    'backup:import',
+    async () => {
+      const { canceled, filePaths } = await dialog.showOpenDialog(managerWin, {
+        title: '导入备份',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile'],
+      })
+      if (canceled || !filePaths[0]) return { ok: false, reason: '已取消' }
+      try {
+        const parsed = JSON.parse(fs.readFileSync(filePaths[0], 'utf-8'))
+        return store.importData(parsed)
+      } catch {
+        return { ok: false, reason: '文件读取失败' }
       }
-      store.data = {
-        futureTasks: parsed.futureTasks,
-        todos: parsed.todos,
-        settings: store.data.settings,
-      }
-      store.save()
-      return { ok: true }
-    } catch {
-      return { ok: false, reason: '文件读取失败' }
-    }
-  })
-  ipcMain.on('window:close', () => widgetWin.hide())
+    },
+    { mutate: true }
+  )
   ipcMain.on('manager:open', () => openManager())
 }
 
-app.whenReady().then(() => {
-  app.setAppUserModelId('com.planner.studio')
-  store = new DataStore(path.join(app.getPath('userData'), 'data.json'))
-  registerIpc()
-  createWidget()
-  createTray()
-  checkDueTasks()
-  checkRepeats()
-  setInterval(() => {
+if (!app.requestSingleInstanceLock()) {
+  // 已有实例在跑：直接退出，避免两个进程同时读写同一个 data.json
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (widgetWin && !widgetWin.isDestroyed()) {
+      widgetWin.show()
+      widgetWin.focus()
+    }
+    openManager()
+  })
+
+  app.whenReady().then(() => {
+    app.setAppUserModelId('com.planner.studio')
+    store = new DataStore(path.join(app.getPath('userData'), 'data.json'))
+    registerIpc()
+    createWidget()
+    createTray()
     checkDueTasks()
     checkRepeats()
-  }, 30000)
-})
+    setInterval(() => {
+      checkDueTasks()
+      checkRepeats()
+    }, 30000)
+  })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+}
