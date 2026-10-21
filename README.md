@@ -58,11 +58,15 @@
 planner-studio/
 ├─ main.js               # 主进程：双窗口、IPC、通知、托盘、备份、桌面挂载
 ├─ preload.js            # contextBridge 白名单 API
-├─ data-store.js         # 数据模块：CRUD、重复任务、跳过机制、设置
-├─ data-store 测试 test/ # node:test 单测
+├─ data-store.js         # 数据模块：CRUD、重复任务、跳过机制、统计、持久化
 ├─ renderer/
 │  ├─ widget.*           # 桌面挂件（展示 + 待办操作 + 激励语 + 右键管理）
 │  ├─ manager.*          # 管理窗口（添加/编辑/统计/设置/日历）
+├─ test/                 # data-store 的 node:test 单测
+├─ scripts/              # 工程脚本（提交信息校验）
+├─ docs/                 # 架构审查报告与工程规范
+├─ .githooks/            # 提交前单测、提交信息格式校验
+├─ .github/workflows/    # GitHub Actions CI
 ├─ build/icon.png        # 打包图标
 ├─ assets/tray.png       # 托盘图标
 ├─ assets/attach-desktop.ps1  # 挂载挂件到桌面层级（WorkerW）
@@ -74,8 +78,17 @@ planner-studio/
 npm install        # 安装依赖（国内网络建议: npm config set registry https://registry.npmmirror.com）
 npm start          # 启动应用
 npm test           # 运行数据模块单测
+npm run lint       # ESLint 检查
+npm run verify     # 单测 + ESLint，提交前跑这个
+npm run hooks:install  # 启用提交钩子（首次克隆后执行一次）
 npm run pack       # 打包 Windows 安装包（生成于 dist/）
 ```
+
+### 开发规范
+
+提交信息、分支命名、版本发布、代码分层与验收标准见 **[docs/CONVENTIONS.md](docs/CONVENTIONS.md)**，架构分层与已知问题见 **[docs/architecture-review.md](docs/architecture-review.md)**。
+
+要点：提交信息走 Conventional Commits（`feat(stats): ...`），不符合格式会被 `commit-msg` 钩子直接拒绝；每次提交前 `pre-commit` 会跑一遍单测，失败即中止。
 
 ### 打包提示
 

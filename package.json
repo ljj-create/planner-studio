@@ -12,6 +12,9 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
+    "lint": "eslint .",
+    "verify": "node --test && eslint .",
+    "hooks:install": "git config core.hooksPath .githooks",
     "pack": "electron-builder --win"
   },
   "build": {
@@ -38,7 +41,10 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "eslint": "^9.39.4",
+    "globals": "^17.13.0"
   }
 }

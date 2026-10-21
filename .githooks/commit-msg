@@ -1,0 +1,3 @@
+#!/bin/sh
+# 校验提交信息格式，规则见 docs/CONVENTIONS.md
+node scripts/check-commit-msg.js "$1"

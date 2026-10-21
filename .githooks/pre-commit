@@ -1,0 +1,8 @@
+#!/bin/sh
+# 提交前跑数据层单测，失败则中止提交
+if ! node --test > /dev/null 2>&1; then
+  echo ""
+  echo "单测未通过，提交已中止。"
+  echo "请先执行 npm test 查看失败用例；确需跳过可用 git commit --no-verify（不建议）。"
+  exit 1
+fi
