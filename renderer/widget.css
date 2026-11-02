@@ -110,6 +110,90 @@ body[data-theme="dark"] .motto {
   opacity: 0.85;
 }
 
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.panel-head h2 {
+  margin-bottom: 0;
+}
+
+.week-range {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 今日待办吃掉剩余高度，倒计时关了也不会留空洞 */
+.todo-panel {
+  flex: 1;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+
+.week-board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.week-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--card-bg);
+  cursor: pointer;
+}
+
+.week-cell:hover {
+  border-color: rgba(52, 120, 246, 0.45);
+}
+
+.week-cell.is-today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.week-cell.is-empty {
+  opacity: 0.55;
+}
+
+.week-day {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.week-date {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.week-cell.is-today .week-date {
+  color: var(--accent);
+}
+
+.week-mark {
+  min-height: 11px;
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.week-cell.is-all-done .week-mark {
+  color: var(--accent);
+}
+
 .progress {
   display: flex;
   align-items: center;
@@ -142,7 +226,9 @@ body[data-theme="dark"] .motto {
 
 .todo-list {
   list-style: none;
-  max-height: 170px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
@@ -197,7 +283,7 @@ body[data-theme="dark"] .motto {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 230px;
+  max-height: 108px;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
@@ -258,4 +344,8 @@ body[data-theme="dark"] .motto {
   font-size: 12px;
   color: var(--muted);
   padding: 4px 0;
+}
+
+.hidden {
+  display: none;
 }

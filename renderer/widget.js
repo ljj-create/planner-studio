@@ -2,12 +2,16 @@ const api = window.planner
 
 const mottoEl = document.getElementById('motto')
 const countdownList = document.getElementById('countdown-list')
+const countdownPanel = document.getElementById('countdown-panel')
 const todoList = document.getElementById('todo-list')
 const progressBar = document.getElementById('progress-bar')
 const progressText = document.getElementById('progress-text')
+const weekBoard = document.getElementById('week-board')
+const weekRange = document.getElementById('week-range')
 
 let tasks = []
 let todos = []
+let allTodos = {}
 let mottoText = ''
 let currentDayKey = dateKey()
 
@@ -95,6 +99,61 @@ document.addEventListener('contextmenu', (e) => {
   api.openManager()
 })
 
+// 本周日历：七格等宽，格子只放日期与完成情况，点一下进管理窗
+function startOfWeek(base = new Date()) {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
+}
+
+function renderWeek() {
+  weekBoard.textContent = ''
+  const start = startOfWeek()
+  const todayKey = dateKey()
+  const days = Array.from(
+    { length: 7 },
+    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+  )
+  const first = days[0]
+  const last = days[6]
+  weekRange.textContent =
+    first.getMonth() === last.getMonth()
+      ? `${first.getMonth() + 1}/${first.getDate()} - ${last.getDate()}`
+      : `${first.getMonth() + 1}/${first.getDate()} - ${last.getMonth() + 1}/${last.getDate()}`
+
+  for (const d of days) {
+    const key = dateKey(d)
+    // 与周看板同一口径：只算特殊任务，日常任务每天都一样不参与
+    const list = (allTodos[key] || []).filter((t) => !t.dailyId)
+    const total = list.length
+    const done = list.filter((t) => t.done).length
+
+    const cell = document.createElement('div')
+    cell.className = 'week-cell'
+    if (key === todayKey) cell.classList.add('is-today')
+    if (total === 0) cell.classList.add('is-empty')
+    if (total > 0 && done === total) cell.classList.add('is-all-done')
+
+    const weekday = document.createElement('span')
+    weekday.className = 'week-day'
+    weekday.textContent = '一二三四五六日'[(d.getDay() + 6) % 7]
+    const date = document.createElement('span')
+    date.className = 'week-date'
+    date.textContent = d.getDate()
+    const mark = document.createElement('span')
+    mark.className = 'week-mark'
+    mark.textContent = total === 0 ? '·' : done === total ? '✓' : `${done}/${total}`
+
+    cell.title =
+      total === 0
+        ? `${d.getMonth() + 1}月${d.getDate()}日 无安排`
+        : `${d.getMonth() + 1}月${d.getDate()}日 完成 ${done} / ${total}`
+    cell.addEventListener('click', () => api.openManager())
+    cell.append(weekday, date, mark)
+    weekBoard.appendChild(cell)
+  }
+}
+
 function renderMotto() {
   mottoEl.textContent = mottoText
 }
@@ -138,6 +197,7 @@ api.onDataChanged(async () => {
   await loadData()
   renderTasks()
   renderTodos()
+  renderWeek()
   applySettings()
 })
 
@@ -146,12 +206,15 @@ async function loadData() {
   currentDayKey = dateKey()
   tasks = await api.tasks.list()
   todos = await api.todos.get(currentDayKey)
+  allTodos = await api.todos.all()
 }
 
 async function applySettings() {
   const settings = await api.settings.get()
   document.body.dataset.theme = settings.theme
   mottoText = settings.motto || ''
+  // 旧数据没有这个字段，按显示处理
+  countdownPanel.classList.toggle('hidden', settings.showCountdown === false)
   renderMotto()
 }
 
@@ -160,12 +223,14 @@ async function init() {
   await applySettings()
   renderTasks()
   renderTodos()
+  renderWeek()
   setInterval(() => {
     // 倒计时每分钟刷新；跨过零点后要重新取当天待办，否则挂件一直显示昨天
     if (dateKey() !== currentDayKey) {
       loadData().then(() => {
         renderTasks()
         renderTodos()
+        renderWeek()
       })
       return
     }

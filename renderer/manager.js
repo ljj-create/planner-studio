@@ -27,6 +27,7 @@ const monthHeat = document.getElementById('month-heat')
 const doneList = document.getElementById('done-list')
 const doneCount = document.getElementById('done-count')
 const settingTheme = document.getElementById('setting-theme')
+const settingCountdown = document.getElementById('setting-countdown')
 const settingNotify = document.getElementById('setting-notify')
 const settingAutoLaunch = document.getElementById('setting-autolaunch')
 const backupExportBtn = document.getElementById('backup-export-btn')
@@ -530,6 +531,8 @@ async function applyTheme() {
 async function syncSettings() {
   const settings = await applyTheme()
   settingTheme.value = settings.theme
+  // 旧数据没有这个字段，按显示处理
+  settingCountdown.checked = settings.showCountdown !== false
   settingNotify.checked = settings.notify
   settingAutoLaunch.checked = settings.autoLaunch
 }
@@ -749,6 +752,9 @@ dailyForm.addEventListener('submit', async (e) => {
 clearOverdueBtn.addEventListener('click', () => api.tasks.clearOverdue())
 
 settingTheme.addEventListener('change', () => api.settings.set({ theme: settingTheme.value }))
+settingCountdown.addEventListener('change', () =>
+  api.settings.set({ showCountdown: settingCountdown.checked })
+)
 settingNotify.addEventListener('change', () => api.settings.set({ notify: settingNotify.checked }))
 settingAutoLaunch.addEventListener('change', () => api.autoLaunch(settingAutoLaunch.checked))
 

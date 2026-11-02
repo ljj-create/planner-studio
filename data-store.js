@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   notify: true,
   autoLaunch: false,
   motto: '今天的努力，是明天的基石',
+  showCountdown: true,
 }
 const PRIORITIES = ['high', 'medium', 'low']
 const REPEATS = ['none', 'daily', 'workdays', 'weekly']

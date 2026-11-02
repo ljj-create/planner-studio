@@ -159,6 +159,22 @@ test('设置读写与持久化', () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+test('旧数据缺少 showCountdown 时按显示处理', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
+  const file = path.join(dir, 'data.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ version: 2, futureTasks: [], todos: {}, settings: { theme: 'dark' } })
+  )
+  const store = new DataStore(file)
+  // 老文件没有这个字段，读出来要补成 true，否则升级后挂件凭空少一块
+  assert.equal(store.getSettings().showCountdown, true)
+  store.setSettings({ showCountdown: false })
+  const reloaded = new DataStore(file)
+  assert.equal(reloaded.getSettings().showCountdown, false)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
 test('shouldRepeat 判断', () => {
   const { store, dir } = tmpStore()
   const mon = new Date('2026-08-10T12:00:00')
