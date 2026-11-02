@@ -51,7 +51,7 @@ body {
 .widget {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   height: 100vh;
   padding: 10px 12px;
   -webkit-app-region: drag;
@@ -140,80 +140,108 @@ body[data-theme="dark"] .motto {
   flex: none;
 }
 
+/* 本周面板同样按内容长，压到窗口上限时内部滚动 */
+.week-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.week-panel .panel-head {
+  flex: none;
+  margin-bottom: 6px;
+}
+
 .week-board {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-app-region: no-drag;
 }
 
-.week-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 1px 5px;
+/* 一天一块：标题行 + 任务竖排，块之间细线隔开 */
+.week-day-block {
+  padding: 2px 5px 3px;
+  border-bottom: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
 }
 
-.week-row:hover {
+.week-day-block:last-child {
+  border-bottom: none;
+}
+
+.week-day-block:hover {
   background: var(--card-bg);
 }
 
-.week-row.is-today {
+.week-day-block.is-today {
   background: rgba(52, 120, 246, 0.1);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-body[data-theme="dark"] .week-row.is-today {
+body[data-theme="dark"] .week-day-block.is-today {
   background: rgba(77, 159, 255, 0.16);
+}
+
+.week-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .week-day {
   flex: none;
-  width: 11px;
-  font-size: 10px;
-  text-align: center;
+  width: 26px;
+  font-size: 10.5px;
   color: var(--muted);
 }
 
-.week-row.is-today .week-day {
+.week-day-block.is-today .week-day {
   color: var(--accent);
   font-weight: 700;
 }
 
 .week-date {
   flex: none;
-  width: 27px;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.week-count {
+  flex: none;
+  margin-left: auto;
   font-size: 9px;
   color: var(--muted);
 }
 
-.week-items {
-  flex: 1;
-  min-width: 0;
+.week-tasks {
+  list-style: none;
+  margin-top: 1px;
+  padding-left: 32px;
+}
+
+.week-task {
   font-size: 11px;
-  line-height: 16px;
+  line-height: 14px;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.week-item.done {
+.week-task::before {
+  content: "·";
+  margin-right: 3px;
+  color: var(--muted);
+}
+
+.week-task.done {
   color: var(--muted);
   text-decoration: line-through;
-}
-
-.week-blank {
-  color: var(--muted);
-  opacity: 0.45;
-}
-
-.week-count {
-  flex: none;
-  font-size: 9px;
-  color: var(--muted);
 }
 
 .progress {
@@ -259,7 +287,7 @@ body[data-theme="dark"] .week-row.is-today {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 2px;
+  padding: 5px 2px;
   border-bottom: 1px solid var(--border);
   border-left: 3px solid transparent;
   font-size: 13px;

@@ -99,7 +99,7 @@ document.addEventListener('contextmenu', (e) => {
   api.openManager()
 })
 
-// 本周：七天各占一行，直接显示当天任务名，已完成就地划线
+// 本周：每天一块，块内任务竖排一条一行，块之间用分隔线隔开，已完成就地划线
 function startOfWeek(base = new Date()) {
   const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
@@ -107,6 +107,7 @@ function startOfWeek(base = new Date()) {
 }
 
 const RANK = { high: 0, medium: 1, low: 2 }
+const WEEKDAY_FULL = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 function renderWeek() {
   weekBoard.textContent = ''
@@ -131,49 +132,51 @@ function renderWeek() {
       .sort((a, b) => (RANK[a.priority] ?? 1) - (RANK[b.priority] ?? 1))
     const done = list.filter((t) => t.done).length
 
-    const row = document.createElement('div')
-    row.className = 'week-row'
-    if (key === todayKey) row.classList.add('is-today')
+    const block = document.createElement('div')
+    block.className = 'week-day-block'
+    if (key === todayKey) block.classList.add('is-today')
+
+    // 标题行：周一 11/2 …… 2/4
+    const head = document.createElement('div')
+    head.className = 'week-day-head'
 
     const weekday = document.createElement('span')
     weekday.className = 'week-day'
-    weekday.textContent = '一二三四五六日'[(d.getDay() + 6) % 7]
+    weekday.textContent = WEEKDAY_FULL[(d.getDay() + 6) % 7]
 
     const date = document.createElement('span')
     date.className = 'week-date'
     date.textContent = `${d.getMonth() + 1}/${d.getDate()}`
 
-    const items = document.createElement('span')
-    items.className = 'week-items'
-    if (list.length === 0) {
-      const blank = document.createElement('span')
-      blank.className = 'week-blank'
-      blank.textContent = '—'
-      items.appendChild(blank)
-    } else {
-      list.forEach((todo, i) => {
-        if (i > 0) items.appendChild(document.createTextNode('、'))
-        const span = document.createElement('span')
-        span.className = 'week-item'
-        if (todo.done) span.classList.add('done')
-        span.textContent = todo.text
-        items.appendChild(span)
-      })
-    }
-
     const count = document.createElement('span')
     count.className = 'week-count'
-    count.textContent = list.length === 0 ? '' : `${done}/${list.length}`
+    count.textContent = list.length === 0 ? '—' : `${done}/${list.length}`
 
-    row.title =
+    head.append(weekday, date, count)
+    block.appendChild(head)
+
+    // 任务竖排，一条一行，写不下就省略号，不挤在同一行
+    if (list.length > 0) {
+      const tasks = document.createElement('ul')
+      tasks.className = 'week-tasks'
+      for (const todo of list) {
+        const li = document.createElement('li')
+        li.className = 'week-task'
+        if (todo.done) li.classList.add('done')
+        li.textContent = todo.text
+        tasks.appendChild(li)
+      }
+      block.appendChild(tasks)
+    }
+
+    block.title =
       list.length === 0
         ? `${d.getMonth() + 1}月${d.getDate()}日 无安排`
         : `${d.getMonth() + 1}月${d.getDate()}日 ${list
             .map((t) => `${t.done ? '✓' : '·'}${t.text}`)
             .join('  ')}`
-    row.addEventListener('click', () => api.openManager())
-    row.append(weekday, date, items, count)
-    weekBoard.appendChild(row)
+    block.addEventListener('click', () => api.openManager())
+    weekBoard.appendChild(block)
   }
 }
 
