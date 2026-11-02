@@ -124,7 +124,11 @@ function checkDueTasks() {
 }
 
 function checkRepeats() {
-  if (store.applyRepeats() > 0) broadcast()
+  let changed = false
+  if (store.applyRepeats() > 0) changed = true
+  // 跨天时把日常任务定义投射成新一天的待办实例
+  if (store.ensureDailyInstances() > 0) changed = true
+  if (changed) broadcast()
 }
 
 function registerIpc() {
@@ -148,6 +152,19 @@ function registerIpc() {
   handle('todos:deleteRepeat', (templateId) => store.deleteRepeatTemplate(templateId), {
     mutate: true,
   })
+  handle('daily:list', () => store.getDailyTasks())
+  handle(
+    'daily:add',
+    (text, extra) => {
+      const list = store.addDailyTask(text, extra)
+      // 加完立刻投放今天的实例，用户不必等下一次轮询
+      store.ensureDailyInstances()
+      return list
+    },
+    { mutate: true }
+  )
+  handle('daily:update', (id, patch) => store.updateDailyTask(id, patch), { mutate: true })
+  handle('daily:remove', (id) => store.removeDailyTask(id), { mutate: true })
   handle('tasks:list', () => store.getTasks())
   handle('tasks:add', (title, dueAt) => store.addTask(title, dueAt), { mutate: true })
   handle('tasks:remove', (id) => store.removeTask(id), { mutate: true })

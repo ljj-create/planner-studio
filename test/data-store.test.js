@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { DataStore, genId, dateKeyOf } = require('../data-store')
+const { DataStore, genId, dateKeyOf, SCHEMA_VERSION } = require('../data-store')
 
 function tmpStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
@@ -64,6 +64,26 @@ test('不同日期的待办互不干扰', () => {
   store.addTodo('2026-08-13', '明天的事')
   assert.equal(store.getTodos('2026-08-12').length, 1)
   assert.equal(store.getTodos('2026-08-13').length, 1)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('未来日期可预排待办，但不计入本周已发生的汇总', () => {
+  const { store, dir } = tmpStore()
+  const today = new Date(2026, 7, 12, 9, 0, 0) // 2026-08-12 周三
+  const friday = dateKeyOf(new Date(2026, 7, 14))
+  store.addTodo(dateKeyOf(today), '今天的事')
+  const fri = store.addTodo(friday, '周五的事').at(-1)
+  store.toggleTodo(friday, fri.id)
+
+  const stats = store.getStats(today)
+  const dayFriday = stats.week.days.find((d) => d.key === friday)
+  // 周看板要能看到未来日期已排的任务与完成状态
+  assert.equal(dayFriday.total, 1)
+  assert.equal(dayFriday.done, 1)
+  assert.equal(dayFriday.isFuture, true)
+  // 但汇总口径只算到今天，周五那条不能提前算进本周完成数
+  assert.equal(stats.week.total, 1)
+  assert.equal(stats.week.done, 0)
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -295,13 +315,111 @@ test('deleteRepeatTemplate 删除所有实例后不再生成', () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+// ---- 日常任务 ----
+
+test('日常任务每天投射一条实例，重复调用不重复生成', () => {
+  const { store, dir } = tmpStore()
+  const today = new Date(2026, 7, 12)
+  store.addDailyTask('喝水 2 升', { priority: 'low' })
+  assert.equal(store.ensureDailyInstances(today), 1)
+  assert.equal(store.ensureDailyInstances(today), 0)
+
+  const list = store.getTodos(dateKeyOf(today))
+  assert.equal(list.length, 1)
+  assert.equal(list[0].text, '喝水 2 升')
+  assert.equal(list[0].priority, 'low')
+  assert.ok(list[0].dailyId)
+  assert.equal(list[0].done, false)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('日常任务跨天各自生成独立实例', () => {
+  const { store, dir } = tmpStore()
+  const day1 = new Date(2026, 7, 12)
+  const day2 = new Date(2026, 7, 13)
+  store.addDailyTask('喝水 2 升')
+  store.ensureDailyInstances(day1)
+  store.ensureDailyInstances(day2)
+  const a = store.getTodos(dateKeyOf(day1))[0]
+  const b = store.getTodos(dateKeyOf(day2))[0]
+  assert.notEqual(a.id, b.id)
+  assert.equal(a.dailyId, b.dailyId)
+
+  // 昨天完成不等于今天完成
+  store.toggleTodo(dateKeyOf(day1), a.id)
+  assert.equal(store.getTodos(dateKeyOf(day2))[0].done, false)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('删掉今日的日常任务实例后当天不再补回，次日正常生成', () => {
+  const { store, dir } = tmpStore()
+  const today = new Date(2026, 7, 12)
+  const tomorrow = new Date(2026, 7, 13)
+  store.addDailyTask('喝水 2 升')
+  store.ensureDailyInstances(today)
+  const inst = store.getTodos(dateKeyOf(today))[0]
+  store.removeTodo(dateKeyOf(today), inst.id)
+
+  assert.equal(store.getTodos(dateKeyOf(today)).length, 0)
+  assert.equal(store.ensureDailyInstances(today), 0)
+  assert.equal(store.getTodos(dateKeyOf(today)).length, 0)
+  assert.equal(store.ensureDailyInstances(tomorrow), 1)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('改日常任务名与优先级同步到已投放的未完成实例', () => {
+  const { store, dir } = tmpStore()
+  const today = new Date(2026, 7, 12)
+  const created = store.addDailyTask('喝水', { priority: 'medium' })
+  store.ensureDailyInstances(today)
+
+  store.updateDailyTask(created[0].id, { text: '喝水 2 升', priority: 'high' })
+  const inst = store.getTodos(dateKeyOf(today))[0]
+  assert.equal(inst.text, '喝水 2 升')
+  assert.equal(inst.priority, 'high')
+  assert.equal(store.getDailyTasks()[0].text, '喝水 2 升')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('删除日常任务定义时清掉今日未完成实例，已完成记录保留', () => {
+  const { store, dir } = tmpStore()
+  const today = new Date(2026, 7, 12)
+  const key = dateKeyOf(today)
+  const created = store.addDailyTask('喝水 2 升')
+  store.ensureDailyInstances(today)
+  const inst = store.getTodos(key)[0]
+  store.toggleTodo(key, inst.id)
+
+  store.removeDailyTask(created[0].id, today)
+  assert.equal(store.getDailyTasks().length, 0)
+  // 已完成的那条作为历史留着，不能凭空消失
+  assert.equal(store.getTodos(key).length, 1)
+  assert.equal(store.getTodos(key)[0].done, true)
+  assert.equal(store.ensureDailyInstances(today), 0)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('v1 数据文件升级到当前版本时补齐日常任务字段', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-test-'))
+  const file = path.join(dir, 'data.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ version: 1, futureTasks: [], todos: { '2026-08-12': [] }, settings: {} })
+  )
+  const store = new DataStore(file)
+  assert.deepEqual(store.getDailyTasks(), [])
+  assert.deepEqual(store.data.dailySkips, {})
+  assert.equal(store.data.version, SCHEMA_VERSION)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
 // ---- 持久化健壮性与备份导入 ----
 
 test('首次启动写入带版本号的数据文件', () => {
   const { store, dir } = tmpStore()
   store.addTodo('2026-08-12', 'a')
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf-8'))
-  assert.equal(onDisk.version, 1)
+  assert.equal(onDisk.version, SCHEMA_VERSION)
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -313,9 +431,9 @@ test('旧文件缺少 version 字段时自动补版本并回写', () => {
     JSON.stringify({ futureTasks: [], todos: {}, settings: { theme: 'dark' } })
   )
   const store = new DataStore(file)
-  assert.equal(store.data.version, 1)
+  assert.equal(store.data.version, SCHEMA_VERSION)
   const onDisk = JSON.parse(fs.readFileSync(file, 'utf-8'))
-  assert.equal(onDisk.version, 1)
+  assert.equal(onDisk.version, SCHEMA_VERSION)
   assert.equal(onDisk.settings.theme, 'dark')
   fs.rmSync(dir, { recursive: true, force: true })
 })

@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('planner', {
     updateRepeat: (templateId, repeat) => ipcRenderer.invoke('todos:updateRepeat', templateId, repeat),
     deleteRepeat: (templateId) => ipcRenderer.invoke('todos:deleteRepeat', templateId),
   },
+  daily: {
+    list: () => ipcRenderer.invoke('daily:list'),
+    add: (text, extra) => ipcRenderer.invoke('daily:add', text, extra),
+    update: (id, patch) => ipcRenderer.invoke('daily:update', id, patch),
+    remove: (id) => ipcRenderer.invoke('daily:remove', id),
+  },
   tasks: {
     list: () => ipcRenderer.invoke('tasks:list'),
     add: (title, dueAt) => ipcRenderer.invoke('tasks:add', title, dueAt),

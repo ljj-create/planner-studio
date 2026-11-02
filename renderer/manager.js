@@ -37,10 +37,17 @@ const calTitle = document.getElementById('cal-title')
 const calGrid = document.getElementById('cal-grid')
 const calDayTitle = document.getElementById('cal-day-title')
 const calDayTodos = document.getElementById('cal-day-todos')
+const weekboard = document.getElementById('weekboard')
+const weekboardRange = document.getElementById('weekboard-range')
+const dailyList = document.getElementById('daily-list')
+const dailyCount = document.getElementById('daily-count')
+const dailyForm = document.getElementById('daily-form')
+const dailyInput = document.getElementById('daily-input')
 
 let tasks = []
 let todos = []
 let allTodos = {}
+let dailyTasks = []
 let stats = null
 let statRange = 'week'
 let currentDayKey = dateKey()
@@ -105,13 +112,16 @@ function renderTasks() {
 }
 
 const PRIORITY_CLASS = { high: 'p-high', medium: 'p-medium', low: 'p-low' }
+const PRIORITY_RANK = { high: 0, medium: 1, low: 2 }
+const WEEKDAY_FULL = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+function byPriority(a, b) {
+  return (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1)
+}
 
 function renderTodos() {
   todoList.textContent = ''
-  const sorted = [...todos].sort((a, b) => {
-    const rank = { high: 0, medium: 1, low: 2 }
-    return rank[a.priority || 'medium'] - rank[b.priority || 'medium']
-  })
+  const sorted = [...todos].sort(byPriority)
   const done = sorted.filter((t) => t.done).length
   const total = sorted.length
   todayProgress.textContent = total === 0 ? '' : `已完成 ${done} / ${total}`
@@ -134,7 +144,9 @@ function renderTodos() {
     label.className = 'todo-text'
     label.textContent = todo.text
     label.title = '双击编辑'
-    label.addEventListener('dblclick', () => startEdit(label, dateKey(), todo.id, todo.text))
+    label.addEventListener('dblclick', () =>
+      startEdit(label, todo.text, (v) => api.todos.rename(dateKey(), todo.id, v))
+    )
     if (todo.repeat && todo.repeat !== 'none') {
       const tag = document.createElement('button')
       tag.className = 'repeat-tag'
@@ -147,6 +159,14 @@ function renderTodos() {
       label.appendChild(document.createTextNode(' '))
       label.appendChild(tag)
     }
+    if (todo.dailyId) {
+      const tag = document.createElement('span')
+      tag.className = 'daily-tag'
+      tag.textContent = '日常'
+      tag.title = '来自日常任务清单，每天自动出现'
+      label.appendChild(document.createTextNode(' '))
+      label.appendChild(tag)
+    }
     const del = document.createElement('button')
     del.className = 'icon-btn'
     del.textContent = '×'
@@ -154,6 +174,37 @@ function renderTodos() {
     del.addEventListener('click', () => api.todos.remove(dateKey(), todo.id))
     li.append(check, label, del)
     todoList.appendChild(li)
+  }
+}
+
+function renderDaily() {
+  dailyList.textContent = ''
+  dailyCount.textContent = dailyTasks.length === 0 ? '' : `${dailyTasks.length} 项`
+  if (dailyTasks.length === 0) {
+    const p = document.createElement('p')
+    p.className = 'placeholder'
+    p.textContent = '还没有日常任务，加一条每天都要做的事'
+    dailyList.appendChild(p)
+    return
+  }
+  for (const task of dailyTasks) {
+    const row = document.createElement('div')
+    row.className = `daily-row ${PRIORITY_CLASS[task.priority] || PRIORITY_CLASS.medium}`
+    const text = document.createElement('span')
+    text.className = 'daily-text'
+    text.textContent = task.text
+    text.title = `${task.text}（双击改名）`
+    text.addEventListener('dblclick', () =>
+      startEdit(text, task.text, (v) => api.daily.update(task.id, { text: v }))
+    )
+    const del = document.createElement('button')
+    del.type = 'button'
+    del.className = 'daily-del'
+    del.textContent = '×'
+    del.title = '删除这条日常任务（已完成的记录保留）'
+    del.addEventListener('click', () => api.daily.remove(task.id))
+    row.append(text, del)
+    dailyList.appendChild(row)
   }
 }
 
@@ -317,6 +368,138 @@ function renderCompleted(range) {
   }
 }
 
+// ---------- 本周看板 ----------
+
+function startOfWeek(base = new Date()) {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
+}
+
+function weekDaysOf(base = new Date()) {
+  const start = startOfWeek(base)
+  return Array.from(
+    { length: 7 },
+    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+  )
+}
+
+function formatWeekRange(days) {
+  const a = days[0]
+  const b = days[6]
+  const head = `${a.getMonth() + 1}月${a.getDate()}日`
+  if (a.getMonth() === b.getMonth()) return `${head} - ${b.getDate()}日`
+  return `${head} - ${b.getMonth() + 1}月${b.getDate()}日`
+}
+
+function buildWeekItem(key, todo) {
+  const li = document.createElement('li')
+  li.className = `wb-item ${PRIORITY_CLASS[todo.priority] || PRIORITY_CLASS.medium}`
+  if (todo.done) li.classList.add('done')
+
+  const check = document.createElement('input')
+  check.type = 'checkbox'
+  check.checked = todo.done
+  check.title = todo.done ? '标记为未完成' : '标记为完成'
+  check.addEventListener('change', () => api.todos.toggle(key, todo.id))
+
+  const text = document.createElement('span')
+  text.className = 'wb-text'
+  text.textContent = todo.text
+  text.title = `${todo.text}（双击改名）`
+  text.addEventListener('dblclick', () =>
+    startEdit(text, todo.text, (v) => api.todos.rename(key, todo.id, v))
+  )
+
+  const del = document.createElement('button')
+  del.type = 'button'
+  del.className = 'wb-del'
+  del.textContent = '×'
+  del.title = '删除'
+  del.addEventListener('click', () => api.todos.remove(key, todo.id))
+
+  li.append(check, text, del)
+  return li
+}
+
+// 每列的「+ 添加」变成就地输入框，回车写入该日期
+function startWeekAdd(col, addBtn, key) {
+  if (col.querySelector('.wb-add-input')) return
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.className = 'wb-add-input'
+  input.placeholder = '任务名，回车添加'
+  addBtn.replaceWith(input)
+  input.focus()
+
+  let closed = false
+  const close = () => {
+    if (closed) return
+    closed = true
+    input.replaceWith(addBtn)
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const value = input.value.trim()
+      if (!value) return close()
+      // 写成功后主进程广播，整块重渲染，输入框随之消失
+      api.todos.add(key, value, { priority: 'medium', repeat: 'none' })
+    } else if (e.key === 'Escape') {
+      close()
+    }
+  })
+  input.addEventListener('blur', close)
+}
+
+function renderWeekBoard() {
+  weekboard.textContent = ''
+  const days = weekDaysOf()
+  const todayKey = dateKey()
+  weekboardRange.textContent = formatWeekRange(days)
+
+  for (const d of days) {
+    const key = dateKey(d)
+    const col = document.createElement('div')
+    col.className = 'wb-col'
+    if (key === todayKey) col.classList.add('is-today')
+    else if (key < todayKey) col.classList.add('is-past')
+    if (d.getDay() === 0 || d.getDay() === 6) col.classList.add('is-weekend')
+
+    const head = document.createElement('div')
+    head.className = 'wb-head'
+    const weekday = document.createElement('span')
+    weekday.className = 'wb-weekday'
+    weekday.textContent = WEEKDAY_FULL[(d.getDay() + 6) % 7]
+    const date = document.createElement('span')
+    date.className = 'wb-date'
+    date.textContent = `${d.getMonth() + 1}/${d.getDate()}`
+    head.append(weekday, date)
+
+    const list = document.createElement('ul')
+    list.className = 'wb-list'
+    // 周看板只放特殊任务；日常任务每天固定，放进来会冲淡周计划
+    const dayTodos = (allTodos[key] || []).filter((t) => !t.dailyId).sort(byPriority)
+    if (dayTodos.length === 0) {
+      const empty = document.createElement('li')
+      empty.className = 'wb-empty'
+      empty.textContent = '无安排'
+      list.appendChild(empty)
+    }
+    for (const todo of dayTodos) list.appendChild(buildWeekItem(key, todo))
+
+    const add = document.createElement('button')
+    add.type = 'button'
+    add.className = 'wb-add'
+    add.textContent = '+ 添加'
+    add.title = `给 ${d.getMonth() + 1}月${d.getDate()}日 添加待办`
+    add.addEventListener('click', () => startWeekAdd(col, add, key))
+
+    col.append(head, list, add)
+    weekboard.appendChild(col)
+  }
+}
+
 function jumpToDate(key) {
   const [y, m] = key.split('-').map(Number)
   calYear = y
@@ -351,7 +534,8 @@ async function syncSettings() {
   settingAutoLaunch.checked = settings.autoLaunch
 }
 
-function startEdit(label, key, id, text) {
+// onSave 由调用方决定改的是今日待办、某天待办还是日常任务定义
+function startEdit(label, text, onSave) {
   const input = document.createElement('input')
   input.type = 'text'
   input.className = 'edit-input'
@@ -362,7 +546,7 @@ function startEdit(label, key, id, text) {
     done = true
     const value = input.value.trim()
     if (save && value && value !== text) {
-      api.todos.rename(key, id, value)
+      onSave(value)
     }
     input.replaceWith(label)
     label.textContent = text
@@ -472,10 +656,7 @@ function renderCalendar() {
 function renderSelectedDay() {
   calDayTitle.textContent = selectedKey === dateKey(new Date()) ? '今日待办' : `${selectedKey} 待办`
   calDayTodos.textContent = ''
-  const dayTodos = (allTodos[selectedKey] || []).sort((a, b) => {
-    const rank = { high: 0, medium: 1, low: 2 }
-    return rank[a.priority || 'medium'] - rank[b.priority || 'medium']
-  })
+  const dayTodos = [...(allTodos[selectedKey] || [])].sort(byPriority)
   const dayTasks = tasks.filter((t) => dateKey(new Date(t.dueAt)) === selectedKey)
   for (const task of dayTasks) {
     const li = document.createElement('li')
@@ -557,6 +738,14 @@ todoForm.addEventListener('submit', async (e) => {
   todoRepeat.value = 'none'
 })
 
+dailyForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const value = dailyInput.value.trim()
+  if (!value) return
+  dailyInput.value = ''
+  await api.daily.add(value, { priority: 'medium' })
+})
+
 clearOverdueBtn.addEventListener('click', () => api.tasks.clearOverdue())
 
 settingTheme.addEventListener('change', () => api.settings.set({ theme: settingTheme.value }))
@@ -578,6 +767,7 @@ async function loadData() {
   tasks = await api.tasks.list()
   todos = await api.todos.get(currentDayKey)
   allTodos = await api.todos.all()
+  dailyTasks = await api.daily.list()
 }
 
 async function refreshAll() {
@@ -585,6 +775,8 @@ async function refreshAll() {
   renderHeader()
   renderTasks()
   renderTodos()
+  renderDaily()
+  renderWeekBoard()
   await refreshStats()
   renderCalendar()
   syncSettings()

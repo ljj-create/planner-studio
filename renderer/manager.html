@@ -47,6 +47,25 @@
         <button type="submit">添加</button>
       </form>
       <ul id="todo-list" class="todo-list"></ul>
+
+      <div class="daily-block">
+        <div class="block-title">
+          日常任务<span id="daily-count" class="block-count"></span>
+        </div>
+        <div id="daily-list" class="daily-list"></div>
+        <form id="daily-form" class="add-row">
+          <input id="daily-input" type="text" placeholder="如：喝水 2 升" required>
+          <button type="submit">添加</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel weekboard-panel">
+      <div class="panel-head">
+        <h2>本周看板</h2>
+        <span id="weekboard-range" class="mini-progress"></span>
+      </div>
+      <div id="weekboard" class="weekboard"></div>
     </section>
 
     <section class="panel stat-panel">

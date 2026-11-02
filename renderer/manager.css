@@ -264,6 +264,96 @@ body {
   text-decoration: line-through;
 }
 
+/* 日常任务：定义清单，每天投射成今日待办实例 */
+.daily-tag {
+  flex: none;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.daily-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.daily-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 132px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.daily-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.daily-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.daily-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 2px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.daily-row:last-child {
+  border-bottom: none;
+}
+
+.daily-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.daily-row.p-high {
+  border-left: 2px solid var(--high);
+  padding-left: 6px;
+}
+
+.daily-row.p-medium {
+  border-left: 2px solid var(--medium);
+  padding-left: 6px;
+}
+
+.daily-row.p-low {
+  border-left: 2px solid var(--low);
+  padding-left: 6px;
+}
+
+.daily-del {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.daily-del:hover {
+  color: var(--overdue);
+}
+
+.daily-block .add-row {
+  margin-bottom: 0;
+}
+
 .repeat-tag {
   font-size: 11px;
   color: var(--accent);
@@ -731,6 +821,191 @@ body {
 .mini-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* 本周看板：七列等宽，整行占满 */
+.weekboard-panel {
+  grid-column: 1 / -1;
+}
+
+.weekboard {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wb-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 6px 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+}
+
+.wb-col.is-today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.wb-col.is-past {
+  opacity: 0.7;
+}
+
+.wb-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.wb-weekday {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.wb-col.is-today .wb-weekday {
+  color: var(--accent);
+}
+
+.wb-col.is-weekend .wb-weekday {
+  color: var(--medium);
+}
+
+.wb-date {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.wb-list {
+  flex: 1;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 208px;
+  overflow-y: auto;
+  padding: 1px 0;
+}
+
+.wb-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.wb-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.wb-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 3px 3px 3px 4px;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.wb-item.p-high {
+  border-left-color: var(--high);
+}
+
+.wb-item.p-medium {
+  border-left-color: var(--medium);
+}
+
+.wb-item.p-low {
+  border-left-color: var(--low);
+}
+
+.wb-item input[type="checkbox"] {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.wb-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+  cursor: default;
+}
+
+.wb-item.done .wb-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* 删除按钮不占布局宽度，悬停时浮在右上角 */
+.wb-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  border: none;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 1px 2px;
+  cursor: pointer;
+  opacity: 0;
+  border-radius: 3px;
+}
+
+.wb-item:hover .wb-del,
+.wb-del:focus-visible {
+  opacity: 1;
+}
+
+.wb-del:hover {
+  color: var(--overdue);
+}
+
+.wb-empty {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.4;
+  padding: 2px;
+}
+
+.wb-add {
+  flex: none;
+  width: 100%;
+  margin-top: 4px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.wb-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wb-add-input {
+  flex: none;
+  width: 100%;
+  margin-top: 4px;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--panel);
+  color: var(--text);
 }
 
 .calendar-panel {

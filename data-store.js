@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
 const PRIORITIES = ['high', 'medium', 'low']
 const REPEATS = ['none', 'daily', 'workdays', 'weekly']
 // 数据结构版本，结构变更时 +1 并在 migrate() 里补升级逻辑
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 
 function isPlainObject(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v)
@@ -27,6 +27,8 @@ function defaultData() {
     todos: {},
     repeatSkips: {},
     repeatTemplates: {},
+    dailyTasks: [],
+    dailySkips: {},
     settings: { ...DEFAULT_SETTINGS },
   }
 }
@@ -43,6 +45,8 @@ function normalizeData(parsed) {
     todos: parsed.todos,
     repeatSkips: isPlainObject(parsed.repeatSkips) ? parsed.repeatSkips : {},
     repeatTemplates: isPlainObject(parsed.repeatTemplates) ? parsed.repeatTemplates : {},
+    dailyTasks: Array.isArray(parsed.dailyTasks) ? parsed.dailyTasks : [],
+    dailySkips: isPlainObject(parsed.dailySkips) ? parsed.dailySkips : {},
     settings: { ...DEFAULT_SETTINGS, ...settings },
   }
 }
@@ -53,6 +57,12 @@ function migrate(data) {
   if (data.version < 1) {
     // v0（早期文件没有 version 字段）→ v1：仅补版本号，结构未变
     data.version = 1
+  }
+  if (data.version < 2) {
+    // v1 → v2：新增日常任务定义与其按日跳过记录
+    data.dailyTasks = Array.isArray(data.dailyTasks) ? data.dailyTasks : []
+    data.dailySkips = isPlainObject(data.dailySkips) ? data.dailySkips : {}
+    data.version = 2
   }
   return { changed: data.version !== before }
 }
@@ -210,6 +220,12 @@ class DataStore {
       if (!skips.includes(dateKey)) skips.push(dateKey)
       this.data.repeatSkips[templateId] = skips
     }
+    // 日常任务实例删掉后当天不再补回，否则刷新一次又冒出来
+    if (todo && todo.dailyId) {
+      const skips = this.data.dailySkips[todo.dailyId] || []
+      if (!skips.includes(dateKey)) skips.push(dateKey)
+      this.data.dailySkips[todo.dailyId] = skips
+    }
     this.data.todos[dateKey] = this.getTodos(dateKey).filter((t) => t.id !== id)
     this.save()
     return this.getTodos(dateKey)
@@ -224,6 +240,73 @@ class DataStore {
 
   getTasks() {
     return this.data.futureTasks
+  }
+  getDailyTasks() {
+    return this.data.dailyTasks
+  }
+
+  // 日常任务是「定义」，每天由 ensureDailyInstances 投射成当天的真实待办
+  addDailyTask(text, extra = {}) {
+    const priority = PRIORITIES.includes(extra.priority) ? extra.priority : 'medium'
+    const task = { id: genId(), text, priority, createdAt: new Date().toISOString() }
+    this.data.dailyTasks.push(task)
+    this.save()
+    return this.data.dailyTasks
+  }
+
+  updateDailyTask(id, patch = {}) {
+    const task = this.data.dailyTasks.find((t) => t.id === id)
+    if (!task) return this.data.dailyTasks
+    if (typeof patch.text === 'string' && patch.text.trim()) task.text = patch.text.trim()
+    if (PRIORITIES.includes(patch.priority)) task.priority = patch.priority
+    // 已投放出去且尚未完成的实例跟着改名，避免同一条任务两种叫法
+    for (const list of Object.values(this.data.todos)) {
+      for (const todo of list) {
+        if (todo.dailyId !== id || todo.done) continue
+        todo.text = task.text
+        todo.priority = task.priority
+      }
+    }
+    this.save()
+    return this.data.dailyTasks
+  }
+
+  // 删除定义：今天的未完成实例一并清掉，已完成的保留为历史记录
+  removeDailyTask(id, today = new Date()) {
+    const key = dateKeyOf(today)
+    this.data.dailyTasks = this.data.dailyTasks.filter((t) => t.id !== id)
+    delete this.data.dailySkips[id]
+    this.data.todos[key] = this.getTodos(key).filter((t) => !(t.dailyId === id && !t.done))
+    this.save()
+    return this.data.dailyTasks
+  }
+
+  // 把日常任务定义投射到指定日期，幂等：已有实例或被跳过的不再生成
+  ensureDailyInstances(today = new Date()) {
+    const key = dateKeyOf(today)
+    const list = this.getTodos(key).slice()
+    const existing = new Set(list.filter((t) => t.dailyId).map((t) => t.dailyId))
+    let added = 0
+    for (const daily of this.data.dailyTasks) {
+      if (existing.has(daily.id)) continue
+      const skips = this.data.dailySkips[daily.id] || []
+      if (skips.includes(key)) continue
+      list.push({
+        id: genId(),
+        text: daily.text,
+        done: false,
+        priority: daily.priority,
+        repeat: 'none',
+        dailyId: daily.id,
+        createdAt: new Date().toISOString(),
+      })
+      added++
+    }
+    if (added > 0) {
+      this.data.todos[key] = list
+      this.save()
+    }
+    return added
   }
 
   addTask(title, dueAt) {
@@ -456,4 +539,4 @@ class DataStore {
   }
 }
 
-module.exports = { DataStore, genId, dateKeyOf }
+module.exports = { DataStore, genId, dateKeyOf, SCHEMA_VERSION }
