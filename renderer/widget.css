@@ -65,7 +65,7 @@ body {
 }
 
 .motto {
-  padding: 8px 12px;
+  padding: 5px 12px;
   text-align: center;
   font-size: 13px;
   font-weight: 500;
@@ -136,62 +136,79 @@ body[data-theme="dark"] .motto {
 }
 
 .week-board {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   -webkit-app-region: no-drag;
 }
 
-.week-cell {
+.week-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
-  padding: 5px 1px 4px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--card-bg);
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 5px;
+  border-radius: 5px;
   cursor: pointer;
 }
 
-.week-cell:hover {
-  border-color: rgba(52, 120, 246, 0.45);
+.week-row:hover {
+  background: var(--card-bg);
 }
 
-.week-cell.is-today {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+.week-row.is-today {
+  background: rgba(52, 120, 246, 0.1);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.week-cell.is-empty {
-  opacity: 0.55;
+body[data-theme="dark"] .week-row.is-today {
+  background: rgba(77, 159, 255, 0.16);
 }
 
 .week-day {
-  font-size: 9px;
-  line-height: 1;
+  flex: none;
+  width: 11px;
+  font-size: 10px;
+  text-align: center;
   color: var(--muted);
+}
+
+.week-row.is-today .week-day {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .week-date {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.15;
-}
-
-.week-cell.is-today .week-date {
-  color: var(--accent);
-}
-
-.week-mark {
-  min-height: 11px;
+  flex: none;
+  width: 27px;
   font-size: 9px;
-  line-height: 1.2;
   color: var(--muted);
 }
 
-.week-cell.is-all-done .week-mark {
-  color: var(--accent);
+.week-items {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-item.done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.week-blank {
+  color: var(--muted);
+  opacity: 0.45;
+}
+
+.week-count {
+  flex: none;
+  font-size: 9px;
+  color: var(--muted);
 }
 
 .progress {
@@ -283,7 +300,7 @@ body[data-theme="dark"] .motto {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 108px;
+  max-height: 82px;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
