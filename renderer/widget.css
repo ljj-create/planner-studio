@@ -127,12 +127,17 @@ body[data-theme="dark"] .motto {
   color: var(--muted);
 }
 
-/* 今日待办吃掉剩余高度，倒计时关了也不会留空洞 */
+/* 待办面板按内容收缩：条目少时不撑出空白，条目多时压缩并滚动，不用写死高度 */
 .todo-panel {
-  flex: 1;
-  min-height: 150px;
+  flex: 0 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.todo-panel h2,
+.todo-panel .progress {
+  flex: none;
 }
 
 .week-board {
@@ -243,7 +248,7 @@ body[data-theme="dark"] .week-row.is-today {
 
 .todo-list {
   list-style: none;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   max-height: none;
   overflow-y: auto;
